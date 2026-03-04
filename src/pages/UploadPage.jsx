@@ -1,6 +1,42 @@
 import React, { useState } from 'react';
 import { Upload, X } from 'lucide-react';
 
+import { db } from "../firebase";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+
+// 1. 유튜브 URL에서 ID 추출하는 함수
+const getYoutubeId = (url) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+};
+
+// 2. 데이터 저장 함수
+const saveVideo = async (url, title, description, customThumb) => {
+    const videoId = getYoutubeId(url);
+
+    if (!videoId) {
+        alert("올바른 유튜브 주소를 입력해주세요!");
+        return;
+    }
+
+    try {
+        await addDoc(collection(db, "videos"), {
+            url: url,
+            youtubeId: videoId,
+            title: title || "제목 없음",
+            description: description || "",
+            // 수동 썸네일이 없으면 유튜브 기본 고화질 썸네일 사용
+            thumbnailUrl: customThumb || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+            createdAt: serverTimestamp(),
+        });
+        alert("성공적으로 등록되었습니다!");
+    } catch (e) {
+        console.error("Error adding document: ", e);
+    }
+};
+
+
 const UploadPage = () => {
     const [formData, setFormData] = useState({
         url: '',
@@ -23,6 +59,7 @@ const UploadPage = () => {
         e.preventDefault();
         console.log('Submit:', { ...formData, thumbnail });
         // Firebase logic will be added here
+        saveVideo(formData.url, formData.title, formData.description, preview);
         alert('Submit clicked! Firebase integration coming soon.');
     };
 
