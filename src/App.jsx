@@ -7,7 +7,7 @@ import './App.css';
 
 function App() {
   return (
-    <Router>
+    <Router basename="/studiolikit-admin/">
       <AdminLayout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
