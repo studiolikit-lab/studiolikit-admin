@@ -24,7 +24,7 @@ const saveVideo = async (url, title, description, customThumb) => {
         await addDoc(collection(db, "videos"), {
             url: url,
             youtubeId: videoId,
-            title: title || "제목 없음",
+            title: title || "",
             description: description || "",
             // 수동 썸네일이 없으면 유튜브 기본 고화질 썸네일 사용
             thumbnailUrl: customThumb || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
@@ -40,6 +40,7 @@ const saveVideo = async (url, title, description, customThumb) => {
 const UploadPage = () => {
     const [formData, setFormData] = useState({
         url: '',
+        title: '',
         description: '',
     });
     const [thumbnail, setThumbnail] = useState(null);
@@ -75,6 +76,17 @@ const UploadPage = () => {
                             placeholder="https://www.youtube.com/watch?v=..."
                             value={formData.url}
                             onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                            required
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label>Title</label>
+                        <input
+                            type="text"
+                            placeholder="Enter Title..."
+                            value={formData.title}
+                            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                             required
                         />
                     </div>
@@ -130,7 +142,7 @@ const UploadPage = () => {
                             ) : (
                                 <>
                                     <Upload size={32} style={{ color: '#94a3b8', marginBottom: '0.5rem' }} />
-                                    <p style={{ color: '#64748b' }}>Click or drag thumbnail here</p>
+                                    <p style={{ color: '#64748b' }}>Click to upload thumbnail</p>
                                 </>
                             )}
                             <input
