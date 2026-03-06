@@ -1,12 +1,13 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Upload, LogOut } from 'lucide-react';
+import { LayoutDashboard, Upload, List, LogOut } from 'lucide-react';
 
 const AdminLayout = ({ children }) => {
     const location = useLocation();
 
     const navItems = [
         { path: '/', label: 'DashBoard', icon: <LayoutDashboard size={20} /> },
+        { path: '/categories', label: 'Categories', icon: <List size={20} /> },
         { path: '/upload', label: 'Upload Video', icon: <Upload size={20} /> },
     ];
 

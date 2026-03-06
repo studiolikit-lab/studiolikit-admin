@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Upload, X } from 'lucide-react';
 
 import { db } from "../firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy } from "firebase/firestore";
 
 // 1. 유튜브 URL에서 ID 추출하는 함수
 const getYoutubeId = (url) => {
@@ -12,7 +12,7 @@ const getYoutubeId = (url) => {
 };
 
 // 2. 데이터 저장 함수
-const saveVideo = async (url, title, description, customThumb) => {
+const saveVideo = async (url, title, description, categoryId, customThumb) => {
     const videoId = getYoutubeId(url);
 
     if (!videoId) {
@@ -26,6 +26,7 @@ const saveVideo = async (url, title, description, customThumb) => {
             youtubeId: videoId,
             title: title || "",
             description: description || "",
+            categoryId: categoryId || "",
             // 수동 썸네일이 없으면 유튜브 기본 고화질 썸네일 사용
             thumbnailUrl: customThumb || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
             createdAt: serverTimestamp(),
@@ -42,9 +43,24 @@ const UploadPage = () => {
         url: '',
         title: '',
         description: '',
+        categoryId: '',
     });
+    const [categories, setCategories] = useState([]);
     const [thumbnail, setThumbnail] = useState(null);
     const [preview, setPreview] = useState(null);
+
+    useEffect(() => {
+        const fetchCategories = async () => {
+            const q = query(collection(db, "categories"), orderBy("order", "asc"));
+            const snapshot = await getDocs(q);
+            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setCategories(list);
+            if (list.length > 0) {
+                setFormData(prev => ({ ...prev, categoryId: list[0].id }));
+            }
+        };
+        fetchCategories();
+    }, []);
 
     const handleFileChange = (e) => {
         const file = e.target.files[0];
@@ -60,7 +76,7 @@ const UploadPage = () => {
         e.preventDefault();
         console.log('Submit:', { ...formData, thumbnail });
         // Firebase logic will be added here
-        saveVideo(formData.url, formData.title, formData.description, preview);
+        saveVideo(formData.url, formData.title, formData.description, formData.categoryId, preview);
         alert('Submit clicked! Firebase integration coming soon.');
     };
 
@@ -78,6 +94,32 @@ const UploadPage = () => {
                             onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                             required
                         />
+                    </div>
+
+                    <div className="form-group">
+                        <label>Category (Tab)</label>
+                        <select
+                            value={formData.categoryId}
+                            onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                            required
+                            style={{
+                                padding: '0.75rem',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '0.5rem',
+                                fontSize: '1rem',
+                                background: 'white'
+                            }}
+                        >
+                            <option value="" disabled>Select a category</option>
+                            {categories.map(cat => (
+                                <option key={cat.id} value={cat.id}>{cat.name}</option>
+                            ))}
+                        </select>
+                        {categories.length === 0 && (
+                            <p style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                                No categories found. Please create one in the Categories page first.
+                            </p>
+                        )}
                     </div>
 
                     <div className="form-group">
