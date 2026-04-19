@@ -136,7 +136,7 @@ const SortableVideoCard = ({ video, categories, handleEditClick, handleDelete, i
 const Dashboard = () => {
     const [myVideos, setMyVideos] = useState([]);
     const [categories, setCategories] = useState([]);
-    const [selectedCategory, setSelectedCategory] = useState('all');
+    const [selectedCategory, setSelectedCategory] = useState('');
     const [loading, setLoading] = useState(true);
 
     // Modal State
@@ -151,6 +151,11 @@ const Dashboard = () => {
             const catSnapshot = await getDocs(catQ);
             const catList = catSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setCategories(catList);
+            
+            // 초기 접속 시 카테고리가 있으면 첫 번째 카테고리를 자동으로 선택합니다.
+            if (catList.length > 0 && !selectedCategory) {
+                setSelectedCategory(catList[0].id);
+            }
 
             // 2. Fetch Videos (간단하게 최신순으로만 가져옵니다 - 인덱스 불필요)
             const vidQ = query(collection(db, "videos"), orderBy("createdAt", "desc"));
@@ -317,9 +322,7 @@ const Dashboard = () => {
         }
     };
 
-    const filteredVideos = selectedCategory === 'all'
-        ? myVideos
-        : myVideos.filter(video => video.categoryId === selectedCategory);
+    const filteredVideos = myVideos.filter(video => video.categoryId === selectedCategory);
 
     return (
         <div>
@@ -334,23 +337,6 @@ const Dashboard = () => {
                 paddingBottom: '0.5rem',
                 borderBottom: '1px solid #e2e8f0'
             }}>
-                <button
-                    onClick={() => setSelectedCategory('all')}
-                    style={{
-                        padding: '0.5rem 1.25rem',
-                        borderRadius: '2rem',
-                        border: 'none',
-                        background: selectedCategory === 'all' ? '#6366f1' : 'white',
-                        color: selectedCategory === 'all' ? 'white' : '#64748b',
-                        cursor: 'pointer',
-                        fontWeight: '600',
-                        whiteSpace: 'nowrap',
-                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                        transition: 'all 0.2s'
-                    }}
-                >
-                    All
-                </button>
                 {categories.map(cat => (
                     <button
                         key={cat.id}
@@ -399,7 +385,7 @@ const Dashboard = () => {
                                     categories={categories}
                                     handleEditClick={handleEditClick}
                                     handleDelete={handleDelete}
-                                    isDragDisabled={selectedCategory === 'all'}
+                                    isDragDisabled={false} // All 탭이 제거되었으므로 항상 정렬 가능하도록 설정
                                 />
                             ))}
                         </div>
