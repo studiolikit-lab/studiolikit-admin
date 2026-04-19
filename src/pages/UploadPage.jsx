@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Upload, X } from 'lucide-react';
 
 import { db } from "../firebase";
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, where, limit } from "firebase/firestore";
 
 // 1. 유튜브 URL에서 ID 추출하는 함수
 const getYoutubeId = (url) => {
@@ -12,7 +12,7 @@ const getYoutubeId = (url) => {
 };
 
 // 2. 데이터 저장 함수
-const saveVideo = async (url, title, description, categoryId, customThumb) => {
+const saveVideo = async (url, title, description, categoryId, customThumb, order) => {
     const videoId = getYoutubeId(url);
 
     if (!videoId) {
@@ -27,6 +27,7 @@ const saveVideo = async (url, title, description, categoryId, customThumb) => {
             title: title || "",
             description: description || "",
             categoryId: categoryId || "",
+            order: order || 0,
             // 수동 썸네일이 없으면 유튜브 기본 고화질 썸네일 사용
             thumbnailUrl: customThumb || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
             createdAt: serverTimestamp(),
@@ -72,12 +73,50 @@ const UploadPage = () => {
         }
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        console.log('Submit:', { ...formData, thumbnail });
-        // Firebase logic will be added here
-        saveVideo(formData.url, formData.title, formData.description, formData.categoryId, preview);
-        alert('Submit clicked! Firebase integration coming soon.');
+        
+        try {
+            // 해당 카테고리의 현재 최대 order 값을 찾음
+            const vidsQ = query(
+                collection(db, "videos"),
+                where("categoryId", "==", formData.categoryId),
+                orderBy("order", "desc"),
+                limit(1)
+            );
+            const snapshot = await getDocs(vidsQ);
+            let nextOrder = 1;
+
+            if (!snapshot.empty) {
+                const lastVid = snapshot.docs[0].data();
+                nextOrder = (lastVid.order || 0) + 1;
+            }
+
+            console.log('Submit:', { ...formData, thumbnail, order: nextOrder });
+            await saveVideo(
+                formData.url,
+                formData.title,
+                formData.description,
+                formData.categoryId,
+                preview,
+                nextOrder
+            );
+            
+            // 등록 후 폼 초기화 (선택사항)
+            setFormData({
+                ...formData,
+                url: '',
+                title: '',
+                description: '',
+            });
+            setPreview(null);
+            setThumbnail(null);
+
+        } catch (error) {
+            console.error("Error calculating order: ", error);
+            // 순서 계산 실패 시에도 기본값으로 저장 시도
+            saveVideo(formData.url, formData.title, formData.description, formData.categoryId, preview, Date.now());
+        }
     };
 
     return (

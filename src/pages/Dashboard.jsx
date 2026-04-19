@@ -1,7 +1,131 @@
 import React, { useState, useEffect } from 'react';
 import { PlayCircle, Trash2, Edit, Loader2, X } from 'lucide-react';
 import { db } from "../firebase";
-import { collection, query, orderBy, getDocs, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { collection, query, orderBy, getDocs, deleteDoc, doc, updateDoc, writeBatch } from "firebase/firestore";
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+} from '@dnd-kit/core';
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    verticalListSortingStrategy,
+    rectSortingStrategy,
+    useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { GripVertical } from 'lucide-react';
+
+const SortableVideoCard = ({ video, categories, handleEditClick, handleDelete, isDragDisabled }) => {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging
+    } = useSortable({ 
+        id: video.id,
+        disabled: isDragDisabled
+    });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 2 : 1,
+        opacity: isDragging ? 0.5 : 1,
+    };
+
+    return (
+        <div ref={setNodeRef} className="card" style={{ ...style, padding: 0, overflow: 'hidden', position: 'relative' }}>
+            {/* Drag Handle - ALL 카테고리가 아닐 때만 노출 */}
+            {!isDragDisabled && (
+                <div
+                    {...attributes}
+                    {...listeners}
+                    style={{
+                        position: 'absolute',
+                        top: '10px',
+                        left: '10px',
+                        backgroundColor: 'rgba(255,255,255,0.8)',
+                        borderRadius: '4px',
+                        padding: '4px',
+                        cursor: 'grab',
+                        zIndex: 10,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}
+                >
+                    <GripVertical size={18} color="#64748b" />
+                </div>
+            )}
+
+            <img
+                src={video.thumbnailUrl}
+                alt={video.title}
+                style={{ width: '100%', height: '180px', objectFit: 'cover' }}
+            />
+            <div style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                    <h3 style={{ fontSize: '1.125rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+                        {video.title}
+                    </h3>
+                    <span style={{
+                        fontSize: '0.75rem',
+                        background: '#f1f5f9',
+                        padding: '2px 8px',
+                        borderRadius: '1rem',
+                        color: '#64748b',
+                        marginLeft: '0.5rem'
+                    }}>
+                        {categories.find(c => c.id === video.categoryId)?.name || 'Uncategorized'}
+                    </span>
+                </div>
+                <p style={{
+                    color: '#64748b',
+                    fontSize: '0.875rem',
+                    marginBottom: '1rem',
+                    height: '2.5rem',
+                    overflow: 'hidden',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical'
+                }}>
+                    {video.description}
+                </p>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <a
+                        href={video.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="submit-btn"
+                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', textDecoration: 'none' }}
+                    >
+                        <PlayCircle size={16} /> Link
+                    </a>
+                    <button
+                        onClick={() => handleEditClick(video)}
+                        style={{ padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem', background: 'white', cursor: 'pointer' }}
+                    >
+                        <Edit size={16} />
+                    </button>
+                    <button
+                        onClick={() => handleDelete(video.id)}
+                        style={{ padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem', background: 'white', cursor: 'pointer', color: '#ef4444' }}
+                    >
+                        <Trash2 size={16} />
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const Dashboard = () => {
     const [myVideos, setMyVideos] = useState([]);
@@ -16,16 +140,61 @@ const Dashboard = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Fetch Categories for Tabs
+            // 1. Fetch Categories
             const catQ = query(collection(db, "categories"), orderBy("order", "asc"));
             const catSnapshot = await getDocs(catQ);
             const catList = catSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setCategories(catList);
 
-            // Fetch Videos
+            // 2. Fetch Videos (간단하게 최신순으로만 가져옵니다 - 인덱스 불필요)
             const vidQ = query(collection(db, "videos"), orderBy("createdAt", "desc"));
             const vidSnapshot = await getDocs(vidQ);
-            const vidList = vidSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            let vidList = vidSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // 3. 데이터를 가져온 후 '로컬'에서 정렬합니다. (인덱스 없이도 정확한 순서 보장)
+            vidList.sort((a, b) => {
+                const orderA = typeof a.order === 'number' ? a.order : 999999;
+                const orderB = typeof b.order === 'number' ? b.order : 999999;
+                if (orderA !== orderB) return orderA - orderB;
+                // 순서가 같으면 최신순(createdAt)으로 정렬
+                const timeA = a.createdAt?.toMillis() || 0;
+                const timeB = b.createdAt?.toMillis() || 0;
+                return timeB - timeA;
+            });
+
+            // 3. Migration: Check if any video is missing the 'order' field
+            const missingOrder = vidList.filter(v => typeof v.order === 'undefined');
+            if (missingOrder.length > 0) {
+                console.log("Migrating videos missing 'order' field...");
+                const batch = writeBatch(db);
+
+                // Group by category to assign orders correctly
+                const categoryGroups = {};
+                vidList.forEach(vid => {
+                    const cid = vid.categoryId || 'uncategorized';
+                    if (!categoryGroups[cid]) categoryGroups[cid] = [];
+                    categoryGroups[cid].push(vid);
+                });
+
+                let needsUpdate = false;
+                Object.keys(categoryGroups).forEach(cid => {
+                    categoryGroups[cid].forEach((vid, index) => {
+                        if (typeof vid.order === 'undefined') {
+                            const newOrder = index + 1;
+                            const ref = doc(db, "videos", vid.id);
+                            batch.update(ref, { order: newOrder });
+                            vid.order = newOrder; // Update local data too
+                            needsUpdate = true;
+                        }
+                    });
+                });
+
+                if (needsUpdate) {
+                    await batch.commit();
+                    console.log("Migration complete.");
+                }
+            }
+
             setMyVideos(vidList);
 
         } catch (error) {
@@ -33,6 +202,63 @@ const Dashboard = () => {
             alert("데이터를 불러오는 중 오류가 발생했습니다.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const sensors = useSensors(
+        useSensor(PointerSensor),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    );
+
+    const handleDragEnd = async (event) => {
+        const { active, over } = event;
+
+        if (over && active.id !== over.id) {
+            // Find the category of the dragged item
+            const activeVid = myVideos.find(v => v.id === active.id);
+            if (!activeVid) return;
+
+            const categoryId = activeVid.categoryId;
+
+            // Filter videos of the same category to maintain internal order
+            const sameCategoryVideos = myVideos.filter(v => v.categoryId === categoryId);
+            const otherCategoryVideos = myVideos.filter(v => v.categoryId !== categoryId);
+
+            const oldIndex = sameCategoryVideos.findIndex(v => v.id === active.id);
+            const newIndex = sameCategoryVideos.findIndex(v => v.id === over.id);
+
+            const reorderedCategoryVids = arrayMove(sameCategoryVideos, oldIndex, newIndex);
+
+            // Update orders in the reordered list
+            const updatedCategoryVids = reorderedCategoryVids.map((vid, idx) => ({
+                ...vid,
+                order: idx + 1
+            }));
+
+            // Merge back and maintain sorting
+            const newAllVideos = [...otherCategoryVideos, ...updatedCategoryVids].sort((a, b) => {
+                const orderA = typeof a.order === 'number' ? a.order : 999999;
+                const orderB = typeof b.order === 'number' ? b.order : 999999;
+                if (orderA !== orderB) return orderA - orderB;
+                return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0);
+            });
+
+            setMyVideos(newAllVideos);
+
+            // Save to Firestore
+            try {
+                const batch = writeBatch(db);
+                updatedCategoryVids.forEach(vid => {
+                    const ref = doc(db, "videos", vid.id);
+                    batch.update(ref, { order: vid.order });
+                });
+                await batch.commit();
+            } catch (error) {
+                console.error("Error updating orders: ", error);
+                alert("순서 저장 중 오류가 발생했습니다.");
+            }
         }
     };
 
@@ -139,69 +365,29 @@ const Dashboard = () => {
                     <p style={{ color: '#64748b' }}>이 카테고리에 등록된 영상이 없습니다.</p>
                 </div>
             ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
-                    {filteredVideos.map((video) => (
-                        <div key={video.id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                            <img
-                                src={video.thumbnailUrl}
-                                alt={video.title}
-                                style={{ width: '100%', height: '180px', objectFit: 'cover' }}
-                            />
-                            <div style={{ padding: '1.25rem' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                                    <h3 style={{ fontSize: '1.125rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
-                                        {video.title}
-                                    </h3>
-                                    <span style={{
-                                        fontSize: '0.75rem',
-                                        background: '#f1f5f9',
-                                        padding: '2px 8px',
-                                        borderRadius: '1rem',
-                                        color: '#64748b',
-                                        marginLeft: '0.5rem'
-                                    }}>
-                                        {categories.find(c => c.id === video.categoryId)?.name || 'Uncategorized'}
-                                    </span>
-                                </div>
-                                <p style={{
-                                    color: '#64748b',
-                                    fontSize: '0.875rem',
-                                    marginBottom: '1rem',
-                                    height: '2.5rem',
-                                    overflow: 'hidden',
-                                    display: '-webkit-box',
-                                    WebkitLineClamp: 2,
-                                    WebkitBoxOrient: 'vertical'
-                                }}>
-                                    {video.description}
-                                </p>
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                    <a
-                                        href={video.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="submit-btn"
-                                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', textDecoration: 'none' }}
-                                    >
-                                        <PlayCircle size={16} /> Link
-                                    </a>
-                                    <button
-                                        onClick={() => handleEditClick(video)}
-                                        style={{ padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem', background: 'white', cursor: 'pointer' }}
-                                    >
-                                        <Edit size={16} />
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(video.id)}
-                                        style={{ padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem', background: 'white', cursor: 'pointer', color: '#ef4444' }}
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            </div>
+                <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                >
+                    <SortableContext
+                        items={filteredVideos.map(v => v.id)}
+                        strategy={rectSortingStrategy}
+                    >
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+                            {filteredVideos.map((video) => (
+                                <SortableVideoCard
+                                    key={video.id}
+                                    video={video}
+                                    categories={categories}
+                                    handleEditClick={handleEditClick}
+                                    handleDelete={handleDelete}
+                                    isDragDisabled={selectedCategory === 'all'}
+                                />
+                            ))}
                         </div>
-                    ))}
-                </div>
+                    </SortableContext>
+                </DndContext>
             )}
 
             {/* Edit Modal */}
