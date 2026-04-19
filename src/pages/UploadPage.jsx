@@ -6,7 +6,8 @@ import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, where, li
 
 // 1. 유튜브 URL에서 ID 추출하는 함수
 const getYoutubeId = (url) => {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    // shorts/ 경로를 포함하도록 정규식 업데이트
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|\&v=)([^#\&\?]*).*/;
     const match = url.match(regExp);
     return (match && match[2].length === 11) ? match[2] : null;
 };

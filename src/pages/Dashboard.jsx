@@ -21,6 +21,12 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
 
+const getYoutubeId = (url) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+};
+
 const SortableVideoCard = ({ video, categories, handleEditClick, handleDelete, isDragDisabled }) => {
     const {
         attributes,
@@ -289,9 +295,20 @@ const Dashboard = () => {
         try {
             const videoRef = doc(db, "videos", editingVideo.id);
             const { id, ...updateData } = editingVideo;
+            
+            // URL이 변경되었을 수 있으므로 youtubeId와 썸네일을 갱신합니다.
+            const newYoutubeId = getYoutubeId(updateData.url);
+            if (newYoutubeId) {
+                updateData.youtubeId = newYoutubeId;
+                // 수동 썸네일 경로(DataURL 등)가 아직 설정되지 않은 경우에만 유튜브 썸네일로 업데이트
+                if (!updateData.thumbnailUrl || updateData.thumbnailUrl.startsWith('https://img.youtube.com')) {
+                    updateData.thumbnailUrl = `https://img.youtube.com/vi/${newYoutubeId}/maxresdefault.jpg`;
+                }
+            }
+
             await updateDoc(videoRef, updateData);
 
-            setMyVideos(myVideos.map(v => v.id === id ? editingVideo : v));
+            setMyVideos(myVideos.map(v => v.id === id ? { id, ...updateData } : v));
             setIsEditModalOpen(false);
             alert("수정되었습니다.");
         } catch (error) {
